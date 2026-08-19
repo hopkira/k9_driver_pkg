@@ -1,0 +1,12 @@
+<library path="k9_roboclaw_hardware">
+  <class
+    name="k9_drive_pkg/K9RoboClawHardware"
+    type="k9_drive_pkg::K9RoboClawHardware"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>
+      K9 RoboClaw 2x15A ros2_control SystemInterface with rollover-safe encoders,
+      bounded-distance commands, serial watchdog, E-stop latch, battery telemetry,
+      diagnostics, and dry-run commissioning support.
+    </description>
+  </class>
+</library>

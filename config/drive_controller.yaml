@@ -1,0 +1,63 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 30  # Hz; retained from the later proven ROS 2 driver design
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+# K9's source-of-truth geometry and velocity calibration are from the working
+# 2021 Python controller. 0.002179 m/count * 200 counts/rev = 0.4358 m/rev.
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["left_wheel_joint"]
+    right_wheel_names: ["right_wheel_joint"]
+
+    wheel_separation: 0.2022
+    wheel_radius: 0.069359724199448
+    wheel_separation_multiplier: 1.0
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
+
+    odom_frame_id: odom
+    base_frame_id: base_link
+    tf_frame_prefix_enable: false
+
+    position_feedback: true
+    open_loop: false
+    enable_odom_tf: true
+    publish_rate: 30.0
+    velocity_rolling_window_size: 10
+
+    # Layer 1 watchdog. Hardware has two further independent bounds before the
+    # physical, mechanically-latching S3 E-stop.
+    cmd_vel_timeout: 0.25
+    publish_limited_velocity: true
+
+    # Original K9 operational walking-speed ceiling.
+    linear.x.max_velocity: 1.398918
+    linear.x.min_velocity: -1.398918
+
+    # Original 128 QPPS/s acceleration and later 2x braking ratio.
+    linear.x.max_acceleration: 0.278912
+    linear.x.max_deceleration: -0.557824
+    linear.x.max_acceleration_reverse: -0.278912
+    linear.x.max_deceleration_reverse: 0.557824
+    linear.x.max_jerk: .NAN
+    linear.x.min_jerk: .NAN
+
+    # The 2021 controller reduced an on-the-spot turn to 10% wheel speed.
+    angular.z.max_velocity: 1.3836973294
+    angular.z.min_velocity: -1.3836973294
+    angular.z.max_acceleration: 2.7587734916
+    angular.z.max_deceleration: -5.5175469832
+    angular.z.max_acceleration_reverse: -2.7587734916
+    angular.z.max_deceleration_reverse: 5.5175469832
+    angular.z.max_jerk: .NAN
+    angular.z.min_jerk: .NAN
+
+    # Conservative placeholders until K9's encoder odometry is characterised.
+    pose_covariance_diagonal: [0.01, 0.01, 1000000.0, 1000000.0, 1000000.0, 0.05]
+    twist_covariance_diagonal: [0.02, 0.02, 1000000.0, 1000000.0, 1000000.0, 0.10]

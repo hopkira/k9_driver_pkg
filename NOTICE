@@ -1,0 +1,7 @@
+K9 Drive Package
+
+K9 drivetrain calibration and original motion constraints: Richard Hopkins, 2021, Unlicense.
+RoboClaw ROS 2 protocol/safety design reference: https://github.com/hopkira/roboclaw_driver
+That repository contains Apache-2.0 code originating from WimbleRobotics/Sigyn.
+
+This package was generated as a ros2_control adaptation and is distributed under Apache-2.0.

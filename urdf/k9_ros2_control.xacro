@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    K9 RoboClaw ros2_control macro.
+
+    Source of truth:
+      200 RoboClaw quadrature counts / wheel revolution
+      0.002179 m / count
+      0.2022 m wheel separation
+      M1 = left, M2 = right, positive = forwards
+
+    The effective radius is deliberately derived from the known-working encoder
+    distance calibration rather than the nominal 139 mm wheel diameter.
+  -->
+  <xacro:macro name="k9_roboclaw_ros2_control"
+               params="name:=K9RoboClawSystem dry_run:=true start_inhibited:=true device:=/dev/roboclaw">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>k9_drive_pkg/K9RoboClawHardware</plugin>
+
+        <param name="left_joint">left_wheel_joint</param>
+        <param name="right_joint">right_wheel_joint</param>
+        <param name="device">${device}</param>
+        <param name="baud_rate">115200</param>
+        <param name="address">128</param>
+        <param name="io_timeout_ms">50</param>
+        <param name="command_retries">3</param>
+        <param name="debug_serial">false</param>
+        <param name="dry_run">${dry_run}</param>
+        <param name="start_inhibited">${start_inhibited}</param>
+
+        <param name="reset_encoders_on_configure">true</param>
+        <param name="configure_main_voltage_limits">true</param>
+        <param name="configure_s3_estop">true</param>
+        <param name="read_temperature_2">false</param>
+
+        <!-- Proven 2021 K9 physical calibration. -->
+        <param name="encoder_counts_per_revolution">200</param>
+        <param name="metres_per_encoder_count">0.002179</param>
+        <param name="wheel_separation">0.2022</param>
+        <param name="operational_max_qpps">642</param>
+
+        <!-- Original acceleration; later ROS2 safety ratios for braking. -->
+        <param name="acceleration_qpps_per_second">128</param>
+        <param name="deceleration_qpps_per_second">256</param>
+        <param name="emergency_deceleration_qpps_per_second">512</param>
+
+        <!-- Safety layer 2: every speed command is distance-bounded. -->
+        <param name="max_seconds_uncommanded_travel">0.1</param>
+        <!-- Safety layer 3: RoboClaw's own serial watchdog, in 0.1 s units. -->
+        <param name="serial_timeout_deciseconds">2</param>
+
+        <!-- Proven RoboClaw velocity PID calibration values. -->
+        <param name="m1_p">10.644</param>
+        <param name="m1_i">2.206</param>
+        <param name="m1_d">0.0</param>
+        <param name="m1_pid_qpps">1987</param>
+        <param name="m2_p">9.768</param>
+        <param name="m2_i">2.294</param>
+        <param name="m2_d">0.0</param>
+        <param name="m2_pid_qpps">1837</param>
+
+        <!-- Proven 24 V main/motor supply protection. -->
+        <param name="main_voltage_min_tenths">240</param>
+        <param name="main_voltage_max_tenths">292</param>
+
+        <!--
+          S3 mode 2 = E-stop, not RoboClaw firmware-latching.
+          K9's key is mechanically latching and this driver adds a software latch.
+        -->
+        <param name="s3_mode">2</param>
+        <param name="s4_mode">0</param>
+        <param name="s5_mode">0</param>
+
+        <param name="status_poll_hz">10.0</param>
+        <param name="diagnostics_publish_hz">2.0</param>
+        <param name="dry_run_main_voltage">25.6</param>
+        <param name="dry_run_logic_voltage">13.2</param>
+      </hardware>
+
+      <joint name="left_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+
+      <joint name="right_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+</robot>
