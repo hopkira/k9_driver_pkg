@@ -22,8 +22,8 @@ The RoboClaw encoder registers are reset on real hardware configuration, matchin
 K9's controller identifies as `USB Roboclaw 2x15a v4.1.34`.
 
 - Commands 74/75 use the three-byte S3/S4/S5 mode form.
-- S3 mode 2 is used for the RoboClaw E-stop.
-- Startup writes `S3/S4/S5 = 2/0/0`, reads the modes back, and refuses configuration if they do not match.
+- S3 mode `0x01` is used for the non-latching RoboClaw E-stop on firmware v4.1.34.
+- Startup writes `S3/S4/S5 = 0x01/0x00/0x00`, reads the modes back, and refuses configuration unless S3 reads back exactly `0x01`.
 - Command 90 (`GETERROR`) returns FOUR status data bytes followed by CRC on K9's controller. This matches K9's later proven RoboClaw C++ driver (`CmdReadStatus`, which uses `getULongCont2`).
 - E-stop is bit 0 of that 32-bit status word: `0x00000001`.
 

@@ -32,7 +32,7 @@ M1 velocity PID           P 10.644, I 2.206, D 0, QPPS 1987
 M2 velocity PID           P 9.768, I 2.294, D 0, QPPS 1837
 Main voltage limits       24.0 V / 29.2 V
 Logic supply              RELiON 12.8 V LiFePO4
-S3                        E-stop mode 2; mechanically-latching physical key
+S3                        E-stop mode 0x01 (v4.1.34); mechanically-latching physical key
 ```
 
 The 200-count and 0.002179 m/count values are the working 2021 controller's calibration and are
@@ -154,8 +154,3 @@ K9's physical calibration and movement constraints come from Richard Hopkins' wo
 Python controller (Unlicense). The packet-serial design and later safety concepts were informed
 by `hopkira/roboclaw_driver`, whose RoboClaw implementation carries Apache-2.0 provenance from
 WimbleRobotics/Sigyn. This generated package is therefore distributed as Apache-2.0.
-
-
-### RoboClaw 2x15A v4.1.34 protocol note
-
-For K9's controller, command 74/75 uses the three-byte S3/S4/S5 mode form, while command 90 returns a 32-bit status word plus CRC. This mixed behaviour is intentional and matches the controller and K9's later proven driver. E-stop is bit 0 (`0x00000001`).

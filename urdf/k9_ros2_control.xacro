@@ -66,10 +66,11 @@
         <param name="main_voltage_max_tenths">292</param>
 
         <!--
-          S3 mode 2 = E-stop, not RoboClaw firmware-latching.
-          K9's key is mechanically latching and this driver adds a software latch.
+          RoboClaw 2x15A v4.1.34: S3 mode 0x01 = non-latching E-stop.
+          Mode 0x81 is RoboClaw firmware-latching; K9 instead uses its mechanically
+          latching key plus the driver's independent software E-stop latch.
         -->
-        <param name="s3_mode">2</param>
+        <param name="s3_mode">1</param>
         <param name="s4_mode">0</param>
         <param name="s5_mode">0</param>
 

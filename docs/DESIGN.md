@@ -102,7 +102,7 @@ The protections are deliberately independent:
 1. `diff_drive_controller.cmd_vel_timeout = 0.25 s` stops stale ROS commands.
 2. Every RoboClaw command is distance-bounded to at most 0.1 seconds of requested travel.
 3. RoboClaw's serial watchdog is configured for 0.2 seconds.
-4. S3 is configured as RoboClaw E-stop mode 2 and wired to K9's mechanically-latching key.
+4. S3 is configured as RoboClaw v4.1.34 E-stop mode `0x01` and wired to K9's mechanically-latching key.
 
 Additional safeguards:
 
@@ -117,11 +117,11 @@ Additional safeguards:
 - no ROS timer callback accesses the serial port; telemetry publishing uses cached values;
 - one process owns `/dev/roboclaw`.
 
-### Why S3 remains mode 2
+### Why S3 uses mode 0x01
 
 K9's replacement emergency switch is mechanically latching. Using RoboClaw's firmware-latching
 mode as well would require a controller reset/power cycle after every event. Mode 2 keeps the
-physical hardware stop active for as long as the key asserts S3, while the driver adds an
+RoboClaw v4.1.34 defines `0x01` as the non-latching E-stop (`0x81` is firmware-latching). The mechanically-latching key keeps the physical hardware stop active for as long as the key asserts S3, while the driver adds an
 explicit software latch and re-arm sequence after release.
 
 ## Batteries and diagnostics

@@ -27,6 +27,7 @@ namespace
 // later RoboClaw driver. K9's USB RoboClaw 2x15A v4.1.34 returns FOUR data
 // bytes plus CRC for this command. E-stop is bit 0.
 constexpr uint32_t kStatusEStop = 0x00000001;
+constexpr uint8_t kS3ModeEStop = 0x01;  // RoboClaw 2x15A firmware v4.1.34+
 constexpr uint32_t kStatusTemperature1 = 0x00000002;
 constexpr uint32_t kStatusTemperature2 = 0x00000004;
 constexpr uint32_t kStatusLogicBatteryHigh = 0x00000010;
@@ -268,6 +269,10 @@ void K9RoboClawHardware::validate_configuration()
   if (status_poll_hz_ <= 0.0 || diagnostics_publish_hz_ <= 0.0) {
     throw std::invalid_argument("status/diagnostics rates must be positive");
   }
+  if (configure_s3_estop_ && s3_mode_ != kS3ModeEStop) {
+    throw std::invalid_argument(
+      "K9 requires RoboClaw S3 mode 0x01 (non-latching E-Stop) on firmware v4.1.34");
+  }
 
   const auto validate_wheel_joint = [&](const std::string & expected_name) {
       const auto it = std::find_if(
@@ -423,19 +428,20 @@ void K9RoboClawHardware::configure_real_hardware()
     roboclaw_->set_main_voltages(main_voltage_min_tenths_, main_voltage_max_tenths_);
   }
   if (configure_s3_estop_) {
-    // Firmware 4.1.x: mode 2 is the non-firmware-latching E-stop. K9's key is
-    // mechanically latching; the ROS safety latch prevents stale motion resuming.
-    roboclaw_->set_pin_functions(s3_mode_, s4_mode_, s5_mode_);
+    // RoboClaw 2x15A firmware v4.1.34 uses 0x01 for the non-firmware-latching
+    // E-stop (0x81 is firmware-latching). K9's key is mechanically latching;
+    // the ROS safety latch additionally prevents stale motion resuming.
+    roboclaw_->set_pin_functions(kS3ModeEStop, s4_mode_, s5_mode_);
     const auto pin_modes = roboclaw_->read_pin_functions();
-    if (pin_modes[0] != s3_mode_ || pin_modes[1] != s4_mode_ || pin_modes[2] != s5_mode_) {
+    if (pin_modes[0] != kS3ModeEStop || pin_modes[1] != s4_mode_ || pin_modes[2] != s5_mode_) {
       throw std::runtime_error(
         "RoboClaw auxiliary pin configuration readback mismatch: requested S3/S4/S5=" +
-        std::to_string(s3_mode_) + "/" + std::to_string(s4_mode_) + "/" +
+        std::to_string(kS3ModeEStop) + "/" + std::to_string(s4_mode_) + "/" +
         std::to_string(s5_mode_) + ", read back " + std::to_string(pin_modes[0]) + "/" +
         std::to_string(pin_modes[1]) + "/" + std::to_string(pin_modes[2]));
     }
     RCLCPP_INFO(
-      get_logger(), "Verified RoboClaw pin modes: S3=%u (E-Stop), S4=%u, S5=%u",
+      get_logger(), "Verified RoboClaw pin modes: S3=0x%02X (E-Stop), S4=0x%02X, S5=0x%02X",
       static_cast<unsigned>(pin_modes[0]), static_cast<unsigned>(pin_modes[1]),
       static_cast<unsigned>(pin_modes[2]));
   }

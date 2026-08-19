@@ -111,6 +111,7 @@ Wheels remain off the floor.
 1. Arm the drive and command a low forward speed.
 2. Operate the latching E-stop key.
 3. Motion must stop from the RoboClaw/S3 hardware path, independently of ROS.
+4. Startup must report `S3=0x01 (E-Stop)`; any other S3 readback is a commissioning failure.
 4. `/k9/drive/estop` and `/k9/drive/estop_latched` should become true.
 5. Release/reset the physical key. Raw E-stop should clear but the software latch must remain.
 6. Clear it explicitly:
