@@ -1,17 +1,17 @@
-controller_manager:
+# Controller parameters for ROS 2 Jazzy.
+# This file is passed to controller_manager/spawner with --param-file.
+# Each controller owns its type and parameters under its own ros__parameters.
+
+joint_state_broadcaster:
   ros__parameters:
-    update_rate: 30  # Hz; retained from the later proven ROS 2 driver design
-
-    joint_state_broadcaster:
-      type: joint_state_broadcaster/JointStateBroadcaster
-
-    diff_drive_controller:
-      type: diff_drive_controller/DiffDriveController
+    type: joint_state_broadcaster/JointStateBroadcaster
 
 # K9's source-of-truth geometry and velocity calibration are from the working
 # 2021 Python controller. 0.002179 m/count * 200 counts/rev = 0.4358 m/rev.
 diff_drive_controller:
   ros__parameters:
+    type: diff_drive_controller/DiffDriveController
+
     left_wheel_names: ["left_wheel_joint"]
     right_wheel_names: ["right_wheel_joint"]
 
@@ -31,7 +31,7 @@ diff_drive_controller:
     publish_rate: 30.0
     velocity_rolling_window_size: 10
 
-    # Layer 1 watchdog. Hardware has two further independent bounds before the
+    # Layer 1 watchdog. Hardware has further independent bounds before the
     # physical, mechanically-latching S3 E-stop.
     cmd_vel_timeout: 0.25
     publish_limited_velocity: true
@@ -45,8 +45,7 @@ diff_drive_controller:
     linear.x.max_deceleration: -0.557824
     linear.x.max_acceleration_reverse: -0.278912
     linear.x.max_deceleration_reverse: 0.557824
-    linear.x.max_jerk: .NAN
-    linear.x.min_jerk: .NAN
+    # Jerk limits omitted deliberately: Jazzy defaults them to NaN (disabled).
 
     # The 2021 controller reduced an on-the-spot turn to 10% wheel speed.
     angular.z.max_velocity: 1.3836973294
@@ -55,8 +54,6 @@ diff_drive_controller:
     angular.z.max_deceleration: -5.5175469832
     angular.z.max_acceleration_reverse: -2.7587734916
     angular.z.max_deceleration_reverse: 5.5175469832
-    angular.z.max_jerk: .NAN
-    angular.z.min_jerk: .NAN
 
     # Conservative placeholders until K9's encoder odometry is characterised.
     pose_covariance_diagonal: [0.01, 0.01, 1000000.0, 1000000.0, 1000000.0, 0.05]

@@ -1,6 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
-from launch.event_handlers import OnProcessExit
+from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -21,23 +20,19 @@ def generate_launch_description():
 
     robot_description_content = Command(
         [
-                FindExecutable(name="xacro"),
-                " ",
-                xacro_file,
-                " dry_run:=",
-                dry_run,
-                " start_inhibited:=",
-                start_inhibited,
-                " device:=",
-                device,
+            FindExecutable(name="xacro"),
+            " ",
+            xacro_file,
+            " dry_run:=",
+            dry_run,
+            " start_inhibited:=",
+            start_inhibited,
+            " device:=",
+            device,
         ]
     )
-    # Xacro expands to XML text.  Explicitly type the launch substitution as a
-    # string; otherwise launch_ros attempts to parse the XML as YAML.
     robot_description = {
-        "robot_description": ParameterValue(
-            robot_description_content, value_type=str
-        )
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
     }
 
     robot_state_publisher = Node(
@@ -47,35 +42,36 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Current Jazzy ros2_control pattern: robot_state_publisher publishes the
-    # robot description; controller_manager consumes it. Keep controller params
-    # separate rather than passing robot_description directly to control_node.
+    # Jazzy pattern: controller_manager owns manager parameters only. Controller
+    # parameters are supplied by the spawner with --param-file below.
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
         name="controller_manager",
-        parameters=[controller_yaml],
+        parameters=[{"update_rate": 30}],
         remappings=[("robot_description", "/robot_description")],
         output="screen",
     )
 
-    joint_state_spawner = Node(
+    # Current Jazzy ros2_control demo pattern: load both controllers through the
+    # spawner and explicitly give it the controller parameter file.
+    controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
-        output="screen",
-    )
-
-    drive_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["diff_drive_controller", "--controller-manager", "/controller_manager"],
+        name="k9_controller_spawner",
+        arguments=[
+            "joint_state_broadcaster",
+            "diff_drive_controller",
+            "--controller-manager",
+            "/controller_manager",
+            "--param-file",
+            controller_yaml,
+        ],
         output="screen",
     )
 
     return LaunchDescription(
         [
-            # Safety default: dry-run and inhibited unless the operator explicitly overrides both.
             DeclareLaunchArgument(
                 "dry_run",
                 default_value="true",
@@ -84,18 +80,25 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "start_inhibited",
                 default_value="true",
-                description="Start the drive hardware software-inhibited even after controller activation.",
+                description="Start drive software-inhibited after hardware activation.",
             ),
             DeclareLaunchArgument(
                 "device",
                 default_value="/dev/roboclaw",
                 description="Exclusive RoboClaw serial device.",
             ),
+            LogInfo(
+                msg=[
+                    "K9 drive launch: dry_run=",
+                    dry_run,
+                    ", start_inhibited=",
+                    start_inhibited,
+                    ", device=",
+                    device,
+                ]
+            ),
             robot_state_publisher,
             control_node,
-            joint_state_spawner,
-            RegisterEventHandler(
-                OnProcessExit(target_action=joint_state_spawner, on_exit=[drive_spawner])
-            ),
+            controller_spawner,
         ]
     )
