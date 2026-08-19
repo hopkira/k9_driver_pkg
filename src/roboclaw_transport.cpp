@@ -424,7 +424,15 @@ void RoboClawTransport::set_main_voltages(uint16_t minimum_tenths, uint16_t maxi
 
 void RoboClawTransport::set_pin_functions(uint8_t s3_mode, uint8_t s4_mode, uint8_t s5_mode)
 {
+  // Firmware 4.1.x packet-serial command 74 uses exactly three mode bytes.
   write_command_ack(CMD_SET_PIN_FUNCTIONS, {s3_mode, s4_mode, s5_mode});
+}
+
+std::array<uint8_t, 3> RoboClawTransport::read_pin_functions()
+{
+  // Firmware 4.1.x command 75 returns S3, S4 and S5 mode bytes.
+  const auto data = read_command(CMD_GET_PIN_FUNCTIONS, 3);
+  return {data[0], data[1], data[2]};
 }
 
 double RoboClawTransport::read_main_battery_voltage()
@@ -451,9 +459,10 @@ double RoboClawTransport::read_temperature(bool second_sensor)
   return static_cast<double>(decode_u16(data, 0)) / 10.0;
 }
 
-uint32_t RoboClawTransport::read_status()
+uint16_t RoboClawTransport::read_status()
 {
-  return decode_u32(read_command(CMD_GET_STATUS, 4), 0);
+  // RoboClaw firmware 4.1.x command 90 returns a 16-bit status word.
+  return decode_u16(read_command(CMD_GET_STATUS, 2), 0);
 }
 
 void RoboClawTransport::drive_speed_accel(

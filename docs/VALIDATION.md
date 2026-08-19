@@ -26,3 +26,12 @@ colcon build --packages-select k9_drive_pkg --symlink-install
 ```
 
 Then follow `COMMISSIONING.md` rather than enabling real movement immediately.
+
+
+## RoboClaw firmware protocol correction
+
+K9's controller identifies as `USB Roboclaw 2x15a v4.1.34`. The driver therefore uses the
+RoboClaw Revision 5.6 / firmware 4.1.x packet protocol: command 74 has three pin-mode bytes,
+mode `2` is non-latching E-Stop, command 75 returns three pin-mode bytes, and command 90
+returns a 16-bit status word with E-Stop at bit mask `0x0004`. Startup reads the pin modes back
+and refuses configuration if S3 is not actually mode 2.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -48,12 +49,13 @@ public:
   void set_serial_timeout(uint8_t deciseconds);
   void set_main_voltages(uint16_t minimum_tenths, uint16_t maximum_tenths);
   void set_pin_functions(uint8_t s3_mode, uint8_t s4_mode, uint8_t s5_mode);
+  std::array<uint8_t, 3> read_pin_functions();
 
   double read_main_battery_voltage();
   double read_logic_battery_voltage();
   MotorCurrents read_motor_currents();
   double read_temperature(bool second_sensor = false);
-  uint32_t read_status();
+  uint16_t read_status();
 
   void drive_speed_accel(
     uint32_t acceleration_qpps_per_second,
@@ -84,6 +86,7 @@ private:
   static constexpr uint8_t CMD_GET_CURRENTS = 49;
   static constexpr uint8_t CMD_SET_MAIN_VOLTAGES = 57;
   static constexpr uint8_t CMD_SET_PIN_FUNCTIONS = 74;
+  static constexpr uint8_t CMD_GET_PIN_FUNCTIONS = 75;
   static constexpr uint8_t CMD_GET_TEMPERATURE = 82;
   static constexpr uint8_t CMD_GET_TEMPERATURE_2 = 83;
   static constexpr uint8_t CMD_GET_STATUS = 90;

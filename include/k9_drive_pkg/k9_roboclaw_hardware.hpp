@@ -117,7 +117,7 @@ private:
   // Known-working 24 V main-battery protection from the 2021 controller.
   uint16_t main_voltage_min_tenths_{240};
   uint16_t main_voltage_max_tenths_{292};
-  uint8_t s3_mode_{2};  // E-Stop, non-firmware-latching. Physical key is mechanically latching.
+  uint8_t s3_mode_{2};  // Firmware 4.1.x: E-Stop, non-firmware-latching.
   uint8_t s4_mode_{0};
   uint8_t s5_mode_{0};
 

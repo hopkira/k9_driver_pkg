@@ -23,32 +23,32 @@ namespace k9_drive_pkg
 using namespace drive_math;
 namespace
 {
-constexpr uint32_t kStatusEStop = 0x00000001;
-constexpr uint32_t kStatusTemperature1 = 0x00000002;
-constexpr uint32_t kStatusTemperature2 = 0x00000004;
-constexpr uint32_t kStatusMainBatteryHigh = 0x00000008;
-constexpr uint32_t kStatusLogicBatteryHigh = 0x00000010;
-constexpr uint32_t kStatusLogicBatteryLow = 0x00000020;
-constexpr uint32_t kStatusM1DriverFault = 0x00000040;
-constexpr uint32_t kStatusM2DriverFault = 0x00000080;
-constexpr uint32_t kStatusM1Speed = 0x00000100;
-constexpr uint32_t kStatusM2Speed = 0x00000200;
-constexpr uint32_t kStatusM1Position = 0x00000400;
-constexpr uint32_t kStatusM2Position = 0x00000800;
-constexpr uint32_t kStatusM1Current = 0x00001000;
-constexpr uint32_t kStatusM2Current = 0x00002000;
-constexpr uint32_t kFaultMask = 0x00003fff;
-constexpr uint32_t kStatusM1OverCurrentWarning = 0x00010000;
-constexpr uint32_t kStatusM2OverCurrentWarning = 0x00020000;
-constexpr uint32_t kStatusMainBatteryHighWarning = 0x00040000;
-constexpr uint32_t kStatusMainBatteryLowWarning = 0x00080000;
-constexpr uint32_t kStatusTemperatureWarning = 0x00100000;
-constexpr uint32_t kStatusTemperature2Warning = 0x00200000;
-constexpr uint32_t kStatusS4Triggered = 0x00400000;
-constexpr uint32_t kStatusS5Triggered = 0x00800000;
-constexpr uint32_t kStatusSpeedErrorLimitWarning = 0x01000000;
-constexpr uint32_t kStatusPositionErrorLimitWarning = 0x02000000;
-constexpr uint32_t kWarningMask = 0x033f0000;
+// RoboClaw firmware 4.1.x status word (command 90), per the Revision 5.6
+// protocol used by K9's USB RoboClaw 2x15A v4.1.34.
+constexpr uint32_t kStatusM1OverCurrentWarning = 0x0001;
+constexpr uint32_t kStatusM2OverCurrentWarning = 0x0002;
+constexpr uint32_t kStatusEStop = 0x0004;
+constexpr uint32_t kStatusTemperatureError = 0x0008;
+constexpr uint32_t kStatusTemperature2Error = 0x0010;
+constexpr uint32_t kStatusMainBatteryHighError = 0x0020;
+constexpr uint32_t kStatusLogicBatteryHighError = 0x0040;
+constexpr uint32_t kStatusLogicBatteryLowError = 0x0080;
+constexpr uint32_t kStatusM1DriverFault = 0x0100;
+constexpr uint32_t kStatusM2DriverFault = 0x0200;
+constexpr uint32_t kStatusMainBatteryHighWarning = 0x0400;
+constexpr uint32_t kStatusMainBatteryLowWarning = 0x0800;
+constexpr uint32_t kStatusTemperatureWarning = 0x1000;
+constexpr uint32_t kStatusTemperature2Warning = 0x2000;
+constexpr uint32_t kStatusM1Home = 0x4000;
+constexpr uint32_t kStatusM2Home = 0x8000;
+constexpr uint32_t kFaultMask =
+  kStatusEStop | kStatusTemperatureError | kStatusTemperature2Error |
+  kStatusMainBatteryHighError | kStatusLogicBatteryHighError | kStatusLogicBatteryLowError |
+  kStatusM1DriverFault | kStatusM2DriverFault;
+constexpr uint32_t kWarningMask =
+  kStatusM1OverCurrentWarning | kStatusM2OverCurrentWarning |
+  kStatusMainBatteryHighWarning | kStatusMainBatteryLowWarning |
+  kStatusTemperatureWarning | kStatusTemperature2Warning;
 constexpr double kNearZero = 1.0e-9;
 
 std::string bool_text(bool value) { return value ? "true" : "false"; }
@@ -390,6 +390,12 @@ void K9RoboClawHardware::configure_real_hardware()
   // The first transmitted drive command after opening the link is always zero.
   roboclaw_->stop(emergency_deceleration_qpps_per_second_);
   firmware_version_ = roboclaw_->firmware_version();
+  if (firmware_version_.find("v4.1.") == std::string::npos) {
+    throw std::runtime_error(
+      "This K9 RoboClaw driver is validated for the legacy firmware 4.1.x packet protocol; "
+      "detected firmware: " + firmware_version_);
+  }
+  RCLCPP_INFO(get_logger(), "Using RoboClaw firmware 4.1.x legacy packet/status protocol");
 
   // Hardware-level watchdog: independent of diff_drive_controller's ROS timeout.
   roboclaw_->set_serial_timeout(serial_timeout_deciseconds_);
@@ -401,9 +407,21 @@ void K9RoboClawHardware::configure_real_hardware()
     roboclaw_->set_main_voltages(main_voltage_min_tenths_, main_voltage_max_tenths_);
   }
   if (configure_s3_estop_) {
-    // Mode 2 is RoboClaw's non-firmware-latching E-stop. K9's key is mechanically
-    // latching; the software latch below prevents motion from resuming on key release.
+    // Firmware 4.1.x: mode 2 is the non-firmware-latching E-stop. K9's key is
+    // mechanically latching; the ROS safety latch prevents stale motion resuming.
     roboclaw_->set_pin_functions(s3_mode_, s4_mode_, s5_mode_);
+    const auto pin_modes = roboclaw_->read_pin_functions();
+    if (pin_modes[0] != s3_mode_ || pin_modes[1] != s4_mode_ || pin_modes[2] != s5_mode_) {
+      throw std::runtime_error(
+        "RoboClaw auxiliary pin configuration readback mismatch: requested S3/S4/S5=" +
+        std::to_string(s3_mode_) + "/" + std::to_string(s4_mode_) + "/" +
+        std::to_string(s5_mode_) + ", read back " + std::to_string(pin_modes[0]) + "/" +
+        std::to_string(pin_modes[1]) + "/" + std::to_string(pin_modes[2]));
+    }
+    RCLCPP_INFO(
+      get_logger(), "Verified RoboClaw pin modes: S3=%u (E-Stop), S4=%u, S5=%u",
+      static_cast<unsigned>(pin_modes[0]), static_cast<unsigned>(pin_modes[1]),
+      static_cast<unsigned>(pin_modes[2]));
   }
 
   if (reset_encoders_on_configure_) {
@@ -849,30 +867,22 @@ std::string K9RoboClawHardware::decode_status(uint32_t status) const
   const auto add = [&](uint32_t mask, const char * text) {
     if ((status & mask) != 0) labels.emplace_back(text);
   };
-  add(kStatusEStop, "E-stop");
-  add(kStatusTemperature1, "temperature-1");
-  add(kStatusTemperature2, "temperature-2");
-  add(kStatusMainBatteryHigh, "main-battery-high");
-  add(kStatusLogicBatteryHigh, "logic-battery-high");
-  add(kStatusLogicBatteryLow, "logic-battery-low");
-  add(kStatusM1DriverFault, "M1-driver-fault");
-  add(kStatusM2DriverFault, "M2-driver-fault");
-  add(kStatusM1Speed, "M1-speed-error");
-  add(kStatusM2Speed, "M2-speed-error");
-  add(kStatusM1Position, "M1-position-error");
-  add(kStatusM2Position, "M2-position-error");
-  add(kStatusM1Current, "M1-current-error");
-  add(kStatusM2Current, "M2-current-error");
   add(kStatusM1OverCurrentWarning, "M1-over-current-warning");
   add(kStatusM2OverCurrentWarning, "M2-over-current-warning");
+  add(kStatusEStop, "E-stop");
+  add(kStatusTemperatureError, "temperature-error");
+  add(kStatusTemperature2Error, "temperature-2-error");
+  add(kStatusMainBatteryHighError, "main-battery-high-error");
+  add(kStatusLogicBatteryHighError, "logic-battery-high-error");
+  add(kStatusLogicBatteryLowError, "logic-battery-low-error");
+  add(kStatusM1DriverFault, "M1-driver-fault");
+  add(kStatusM2DriverFault, "M2-driver-fault");
   add(kStatusMainBatteryHighWarning, "main-battery-high-warning");
   add(kStatusMainBatteryLowWarning, "main-battery-low-warning");
   add(kStatusTemperatureWarning, "temperature-warning");
   add(kStatusTemperature2Warning, "temperature-2-warning");
-  add(kStatusS4Triggered, "S4-triggered");
-  add(kStatusS5Triggered, "S5-triggered");
-  add(kStatusSpeedErrorLimitWarning, "speed-error-limit-warning");
-  add(kStatusPositionErrorLimitWarning, "position-error-limit-warning");
+  add(kStatusM1Home, "M1-home/limit");
+  add(kStatusM2Home, "M2-home/limit");
 
   std::ostringstream stream;
   for (std::size_t i = 0; i < labels.size(); ++i) {

@@ -1,5 +1,7 @@
 # k9_drive_pkg
 
+> **Jazzy controller loading note:** controller parameters are passed to `controller_manager/spawner` with `--param-file`, matching the current Jazzy ros2_control DiffBot example.
+
 ROS 2 Jazzy `ros2_control` hardware support for K9's RoboClaw 2x15A differential drive.
 
 ## What this package does
@@ -33,7 +35,8 @@ Logic supply              RELiON 12.8 V LiFePO4
 S3                        E-stop mode 2; mechanically-latching physical key
 ```
 
-The 200-count and 0.002179 m/count values are the working 2021 controller's calibration.
+The 200-count and 0.002179 m/count values are the working 2021 controller's calibration and are
+intentionally authoritative over the later ROS2 driver's 400-count setting.
 
 ## Safety
 
