@@ -33,8 +33,7 @@ Logic supply              RELiON 12.8 V LiFePO4
 S3                        E-stop mode 2; mechanically-latching physical key
 ```
 
-The 200-count and 0.002179 m/count values are the working 2021 controller's calibration and are
-intentionally authoritative over the later ROS2 driver's 400-count setting.
+The 200-count and 0.002179 m/count values are the working 2021 controller's calibration.
 
 ## Safety
 
