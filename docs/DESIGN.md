@@ -145,3 +145,11 @@ For initial bench/drive commissioning `diff_drive_controller` publishes `odom ->
 When K9 later fuses wheel odometry and IMU using `robot_localization`, set
 `enable_odom_tf: false` in `drive_controller.yaml` and let the EKF own `odom -> base_link`.
 Do not allow two publishers to own the same TF.
+
+### E-stop lifecycle semantics
+
+The physical RoboClaw E-stop is a motion interlock, not a reason to take the ros2_control hardware component
+offline. `on_activate()` therefore succeeds with S3 asserted while `write()` forces zero whenever
+`raw_estop` or `estop_latched` is true. Communication faults and non-E-stop RoboClaw hardware faults still
+cause lifecycle activation to fail. This keeps diagnostics, encoder feedback and battery telemetry available
+during an emergency-stop condition.

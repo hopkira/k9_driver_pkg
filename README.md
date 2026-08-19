@@ -154,3 +154,10 @@ K9's physical calibration and movement constraints come from Richard Hopkins' wo
 Python controller (Unlicense). The packet-serial design and later safety concepts were informed
 by `hopkira/roboclaw_driver`, whose RoboClaw implementation carries Apache-2.0 provenance from
 WimbleRobotics/Sigyn. This generated package is therefore distributed as Apache-2.0.
+
+### E-stop at startup
+
+K9 may now be launched with the physical S3 E-stop asserted. The ros2_control hardware component remains
+active for telemetry and diagnostics, but motion is blocked by both the raw E-stop and the software latch.
+After releasing the key, clear `/k9/drive/clear_estop_latch`; if `start_inhibited:=true`, also clear the
+software inhibit. A zero command is then required before motion can re-arm.

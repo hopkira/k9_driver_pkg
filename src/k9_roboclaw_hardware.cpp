@@ -499,15 +499,25 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
   software_inhibit_.store(start_inhibited_);
   active_.store(true);
 
-  if (raw_estop_.load() || estop_latched_.load() || connection_fault_.load() ||
-      hardware_fault_.load()) {
+  // Communication and non-E-stop hardware faults prevent a usable control loop,
+  // so activation must fail for those conditions.  A physical E-stop is
+  // different: K9 should be able to boot, publish diagnostics/encoders/battery
+  // state, and run controller_manager while motion remains positively blocked.
+  if (connection_fault_.load() || hardware_fault_.load()) {
     RCLCPP_ERROR(
       get_logger(),
-      "Drive activation refused: raw_estop=%s latched=%s connection_fault=%s hardware_fault=%s",
-      bool_text(raw_estop_.load()).c_str(), bool_text(estop_latched_.load()).c_str(),
+      "Drive activation refused: connection_fault=%s hardware_fault=%s",
       bool_text(connection_fault_.load()).c_str(), bool_text(hardware_fault_.load()).c_str());
     active_.store(false);
     return CallbackReturn::FAILURE;
+  }
+
+  if (raw_estop_.load() || estop_latched_.load()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Drive active with E-STOP ASSERTED/LATCHED: motion is inhibited. "
+      "Release the physical key, then clear /k9/drive/clear_estop_latch; "
+      "an explicit zero wheel command is required before motion can re-arm.");
   }
 
   if (start_inhibited_) {

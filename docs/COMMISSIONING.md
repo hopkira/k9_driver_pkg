@@ -169,3 +169,32 @@ Once wheel odometry is characterised and IMU fusion is introduced:
 - set `enable_odom_tf: false` on `diff_drive_controller`;
 - feed wheel odometry into `robot_localization`;
 - let the EKF publish the sole `odom -> base_link` transform.
+
+## Booting with the physical E-stop asserted
+
+An asserted RoboClaw S3 E-stop no longer causes the ros2_control hardware lifecycle activation to fail.
+This is intentional: controller_manager, wheel-state reads, battery telemetry, diagnostics and E-stop topics
+remain available while motion is blocked.
+
+At startup with S3 asserted the expected state is:
+
+- hardware component: `active`
+- `/k9/drive/estop`: `true`
+- `/k9/drive/estop_latched`: `true`
+- wheel commands at the RoboClaw: forced to zero
+- motion re-arm: required
+
+To recover after the physical key is released:
+
+```bash
+ros2 service call /k9/drive/clear_estop_latch std_srvs/srv/Trigger "{}"
+```
+
+If launched with `start_inhibited:=true`, also release the independent software inhibit:
+
+```bash
+ros2 service call /k9/drive/set_inhibit std_srvs/srv/SetBool "{data: false}"
+```
+
+Finally send an explicit zero velocity command before any non-zero command. This prevents a stale Nav2 or
+teleop command from resuming motion merely because the E-stop was released.
