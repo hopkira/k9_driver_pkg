@@ -3,6 +3,7 @@ from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -18,9 +19,8 @@ def generate_launch_description():
         [FindPackageShare("k9_drive_pkg"), "config", "drive_controller.yaml"]
     )
 
-    robot_description = {
-        "robot_description": Command(
-            [
+    robot_description_content = Command(
+        [
                 FindExecutable(name="xacro"),
                 " ",
                 xacro_file,
@@ -30,7 +30,13 @@ def generate_launch_description():
                 start_inhibited,
                 " device:=",
                 device,
-            ]
+        ]
+    )
+    # Xacro expands to XML text.  Explicitly type the launch substitution as a
+    # string; otherwise launch_ros attempts to parse the XML as YAML.
+    robot_description = {
+        "robot_description": ParameterValue(
+            robot_description_content, value_type=str
         )
     }
 
@@ -49,6 +55,7 @@ def generate_launch_description():
         executable="ros2_control_node",
         name="controller_manager",
         parameters=[controller_yaml],
+        remappings=[("robot_description", "/robot_description")],
         output="screen",
     )
 
