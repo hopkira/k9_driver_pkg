@@ -459,10 +459,13 @@ double RoboClawTransport::read_temperature(bool second_sensor)
   return static_cast<double>(decode_u16(data, 0)) / 10.0;
 }
 
-uint16_t RoboClawTransport::read_status()
+uint32_t RoboClawTransport::read_status()
 {
-  // RoboClaw firmware 4.1.x command 90 returns a 16-bit status word.
-  return decode_u16(read_command(CMD_GET_STATUS, 2), 0);
+  // K9's RoboClaw 2x15A v4.1.34 returns command 90 as four data bytes
+  // followed by the packet CRC. This matches the proven later K9 RoboClaw
+  // driver (CmdReadStatus/getULongCont2). Reading only two bytes causes the
+  // upper two status bytes to be mistaken for the CRC.
+  return decode_u32(read_command(CMD_GET_STATUS, 4), 0);
 }
 
 void RoboClawTransport::drive_speed_accel(

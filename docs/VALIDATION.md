@@ -1,37 +1,34 @@
-# Bundle validation performed during generation
+# Validation notes
 
-The generation environment did not contain a ROS 2 Jazzy installation, so a full `colcon build`
-could not be performed here. The following checks were completed successfully before packaging:
+The package retains K9's proven drivetrain calibration and safety design while moving the generic differential-drive layer to `ros2_control`.
 
-- XML parsing: `package.xml`, plugin XML and both Xacro/XML files;
-- YAML parsing: controller and Nav2 integration parameter files;
-- Python syntax compilation: `launch/drive.launch.py`;
-- strict standalone C++ compilation (`-std=c++17 -Wall -Wextra -Wpedantic -Werror`) of
-  `roboclaw_transport.cpp`;
-- standalone drive-math smoke tests for the 200-count calibration, forward and reverse uint32
-  encoder rollover, 642-QPPS operating limit, bounded-distance calculation, and 128/256/512
-  acceleration selection;
-- manual API comparison with current ROS 2 Jazzy `ros2_control` and `diff_drive_controller`
-  documentation;
-- RoboClaw status-bit review against the 32-bit command-90 status layout used by the later
-  `hopkira/roboclaw_driver` implementation.
+## Fixed K9 drivetrain calibration
 
-The first Pi-side step should therefore still be:
+- M1 = left wheel; M2 = right wheel.
+- Positive motor command = forward.
+- 200 RoboClaw encoder counts per physical wheel revolution.
+- 0.002179 m per encoder count.
+- Effective wheel circumference 0.4358 m and radius 0.06935972 m.
+- Wheel separation 0.2022 m.
+- Operational wheel-speed ceiling 642 qpps.
+- Acceleration/deceleration/emergency-deceleration 128/256/512 counts/s^2.
 
-```bash
-cd ~/k9_ws
-source /opt/ros/jazzy/setup.bash   # or K9's normal Jazzy setup on the Pi
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --packages-select k9_drive_pkg --symlink-install
-```
+## Encoder handling
 
-Then follow `COMMISSIONING.md` rather than enabling real movement immediately.
+The RoboClaw encoder registers are reset on real hardware configuration, matching the proven 2021 K9 controller. Runtime wrap is independently handled with modular 32-bit deltas accumulated into continuous 64-bit software counts before conversion to ROS joint radians.
 
+## RoboClaw 2x15A v4.1.34 protocol details verified on K9
 
-## RoboClaw firmware protocol correction
+K9's controller identifies as `USB Roboclaw 2x15a v4.1.34`.
 
-K9's controller identifies as `USB Roboclaw 2x15a v4.1.34`. The driver therefore uses the
-RoboClaw Revision 5.6 / firmware 4.1.x packet protocol: command 74 has three pin-mode bytes,
-mode `2` is non-latching E-Stop, command 75 returns three pin-mode bytes, and command 90
-returns a 16-bit status word with E-Stop at bit mask `0x0004`. Startup reads the pin modes back
-and refuses configuration if S3 is not actually mode 2.
+- Commands 74/75 use the three-byte S3/S4/S5 mode form.
+- S3 mode 2 is used for the RoboClaw E-stop.
+- Startup writes `S3/S4/S5 = 2/0/0`, reads the modes back, and refuses configuration if they do not match.
+- Command 90 (`GETERROR`) returns FOUR status data bytes followed by CRC on K9's controller. This matches K9's later proven RoboClaw C++ driver (`CmdReadStatus`, which uses `getULongCont2`).
+- E-stop is bit 0 of that 32-bit status word: `0x00000001`.
+
+The earlier 16-bit command-90 assumption was disproved by the actual controller response: reading only two data bytes caused the upper two status bytes to be interpreted as the CRC.
+
+## Local validation performed
+
+The RoboClaw transport source compiles independently with C++17 and strict warnings. YAML/Xacro/launch syntax has been checked. A final ROS 2 Jazzy `colcon build` must be performed on the target ROS host.

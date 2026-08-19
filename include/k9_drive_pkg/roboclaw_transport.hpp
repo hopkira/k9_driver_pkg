@@ -55,7 +55,7 @@ public:
   double read_logic_battery_voltage();
   MotorCurrents read_motor_currents();
   double read_temperature(bool second_sensor = false);
-  uint16_t read_status();
+  uint32_t read_status();
 
   void drive_speed_accel(
     uint32_t acceleration_qpps_per_second,

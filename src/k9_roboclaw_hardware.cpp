@@ -23,32 +23,48 @@ namespace k9_drive_pkg
 using namespace drive_math;
 namespace
 {
-// RoboClaw firmware 4.1.x status word (command 90), per the Revision 5.6
-// protocol used by K9's USB RoboClaw 2x15A v4.1.34.
-constexpr uint32_t kStatusM1OverCurrentWarning = 0x0001;
-constexpr uint32_t kStatusM2OverCurrentWarning = 0x0002;
-constexpr uint32_t kStatusEStop = 0x0004;
-constexpr uint32_t kStatusTemperatureError = 0x0008;
-constexpr uint32_t kStatusTemperature2Error = 0x0010;
-constexpr uint32_t kStatusMainBatteryHighError = 0x0020;
-constexpr uint32_t kStatusLogicBatteryHighError = 0x0040;
-constexpr uint32_t kStatusLogicBatteryLowError = 0x0080;
-constexpr uint32_t kStatusM1DriverFault = 0x0100;
-constexpr uint32_t kStatusM2DriverFault = 0x0200;
-constexpr uint32_t kStatusMainBatteryHighWarning = 0x0400;
-constexpr uint32_t kStatusMainBatteryLowWarning = 0x0800;
-constexpr uint32_t kStatusTemperatureWarning = 0x1000;
-constexpr uint32_t kStatusTemperature2Warning = 0x2000;
-constexpr uint32_t kStatusM1Home = 0x4000;
-constexpr uint32_t kStatusM2Home = 0x8000;
+// RoboClaw GETERROR/status word (command 90) as implemented by K9's proven
+// later RoboClaw driver. K9's USB RoboClaw 2x15A v4.1.34 returns FOUR data
+// bytes plus CRC for this command. E-stop is bit 0.
+constexpr uint32_t kStatusEStop = 0x00000001;
+constexpr uint32_t kStatusTemperature1 = 0x00000002;
+constexpr uint32_t kStatusTemperature2 = 0x00000004;
+constexpr uint32_t kStatusLogicBatteryHigh = 0x00000010;
+constexpr uint32_t kStatusLogicBatteryLow = 0x00000020;
+constexpr uint32_t kStatusM1DriverFault = 0x00000040;
+constexpr uint32_t kStatusM2DriverFault = 0x00000080;
+constexpr uint32_t kStatusM1Speed = 0x00000100;
+constexpr uint32_t kStatusM2Speed = 0x00000200;
+constexpr uint32_t kStatusM1Position = 0x00000400;
+constexpr uint32_t kStatusM2Position = 0x00000800;
+constexpr uint32_t kStatusM1Current = 0x00001000;
+constexpr uint32_t kStatusM2Current = 0x00002000;
+constexpr uint32_t kStatusM1OverCurrentWarning = 0x00010000;
+constexpr uint32_t kStatusM2OverCurrentWarning = 0x00020000;
+constexpr uint32_t kStatusMainBatteryHighWarning = 0x00040000;
+constexpr uint32_t kStatusMainBatteryLowWarning = 0x00080000;
+constexpr uint32_t kStatusTemperatureWarning = 0x00100000;
+constexpr uint32_t kStatusTemperature2Warning = 0x00200000;
+constexpr uint32_t kStatusS4Triggered = 0x00400000;
+constexpr uint32_t kStatusS5Triggered = 0x00800000;
+constexpr uint32_t kStatusCanWarning = 0x10000000;
+constexpr uint32_t kStatusBootWarning = 0x20000000;
+constexpr uint32_t kStatusM1OverRegenWarning = 0x40000000;
+constexpr uint32_t kStatusM2OverRegenWarning = 0x80000000;
+
 constexpr uint32_t kFaultMask =
-  kStatusEStop | kStatusTemperatureError | kStatusTemperature2Error |
-  kStatusMainBatteryHighError | kStatusLogicBatteryHighError | kStatusLogicBatteryLowError |
-  kStatusM1DriverFault | kStatusM2DriverFault;
+  kStatusEStop | kStatusTemperature1 | kStatusTemperature2 |
+  kStatusLogicBatteryHigh | kStatusLogicBatteryLow |
+  kStatusM1DriverFault | kStatusM2DriverFault |
+  kStatusM1Speed | kStatusM2Speed | kStatusM1Position | kStatusM2Position |
+  kStatusM1Current | kStatusM2Current;
+
 constexpr uint32_t kWarningMask =
   kStatusM1OverCurrentWarning | kStatusM2OverCurrentWarning |
   kStatusMainBatteryHighWarning | kStatusMainBatteryLowWarning |
-  kStatusTemperatureWarning | kStatusTemperature2Warning;
+  kStatusTemperatureWarning | kStatusTemperature2Warning |
+  kStatusS4Triggered | kStatusS5Triggered | kStatusCanWarning |
+  kStatusBootWarning | kStatusM1OverRegenWarning | kStatusM2OverRegenWarning;
 constexpr double kNearZero = 1.0e-9;
 
 std::string bool_text(bool value) { return value ? "true" : "false"; }
@@ -395,7 +411,7 @@ void K9RoboClawHardware::configure_real_hardware()
       "This K9 RoboClaw driver is validated for the legacy firmware 4.1.x packet protocol; "
       "detected firmware: " + firmware_version_);
   }
-  RCLCPP_INFO(get_logger(), "Using RoboClaw firmware 4.1.x legacy packet/status protocol");
+  RCLCPP_INFO(get_logger(), "RoboClaw firmware 4.1.x detected; using K9-verified 32-bit command-90 status framing");
 
   // Hardware-level watchdog: independent of diff_drive_controller's ROS timeout.
   roboclaw_->set_serial_timeout(serial_timeout_deciseconds_);
@@ -867,22 +883,31 @@ std::string K9RoboClawHardware::decode_status(uint32_t status) const
   const auto add = [&](uint32_t mask, const char * text) {
     if ((status & mask) != 0) labels.emplace_back(text);
   };
-  add(kStatusM1OverCurrentWarning, "M1-over-current-warning");
-  add(kStatusM2OverCurrentWarning, "M2-over-current-warning");
   add(kStatusEStop, "E-stop");
-  add(kStatusTemperatureError, "temperature-error");
-  add(kStatusTemperature2Error, "temperature-2-error");
-  add(kStatusMainBatteryHighError, "main-battery-high-error");
-  add(kStatusLogicBatteryHighError, "logic-battery-high-error");
-  add(kStatusLogicBatteryLowError, "logic-battery-low-error");
+  add(kStatusTemperature1, "temperature-error");
+  add(kStatusTemperature2, "temperature-2-error");
+  add(kStatusLogicBatteryHigh, "logic-battery-high-error");
+  add(kStatusLogicBatteryLow, "logic-battery-low-error");
   add(kStatusM1DriverFault, "M1-driver-fault");
   add(kStatusM2DriverFault, "M2-driver-fault");
+  add(kStatusM1Speed, "M1-speed-error");
+  add(kStatusM2Speed, "M2-speed-error");
+  add(kStatusM1Position, "M1-position-error");
+  add(kStatusM2Position, "M2-position-error");
+  add(kStatusM1Current, "M1-current-error");
+  add(kStatusM2Current, "M2-current-error");
+  add(kStatusM1OverCurrentWarning, "M1-over-current-warning");
+  add(kStatusM2OverCurrentWarning, "M2-over-current-warning");
   add(kStatusMainBatteryHighWarning, "main-battery-high-warning");
   add(kStatusMainBatteryLowWarning, "main-battery-low-warning");
   add(kStatusTemperatureWarning, "temperature-warning");
   add(kStatusTemperature2Warning, "temperature-2-warning");
-  add(kStatusM1Home, "M1-home/limit");
-  add(kStatusM2Home, "M2-home/limit");
+  add(kStatusS4Triggered, "S4-warning");
+  add(kStatusS5Triggered, "S5-warning");
+  add(kStatusCanWarning, "CAN-warning");
+  add(kStatusBootWarning, "boot-warning");
+  add(kStatusM1OverRegenWarning, "M1-over-regen-warning");
+  add(kStatusM2OverRegenWarning, "M2-over-regen-warning");
 
   std::ostringstream stream;
   for (std::size_t i = 0; i < labels.size(); ++i) {
