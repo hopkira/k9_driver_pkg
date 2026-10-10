@@ -27,7 +27,7 @@ diff_drive_controller:
 
     position_feedback: true
     open_loop: false
-    enable_odom_tf: true
+    enable_odom_tf: false
     publish_rate: 30.0
     velocity_rolling_window_size: 10
 
