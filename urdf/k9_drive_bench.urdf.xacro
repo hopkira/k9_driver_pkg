@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="k9_drive_bench">
+
   <xacro:arg name="dry_run" default="true"/>
   <xacro:arg name="start_inhibited" default="true"/>
   <xacro:arg name="device" default="/dev/roboclaw"/>
 
   <xacro:include filename="$(find k9_drive_pkg)/urdf/k9_ros2_control.xacro"/>
 
-  <!-- Minimal bench geometry. Replace/include the macro from K9's full URDF later. -->
   <link name="base_link">
     <visual>
       <geometry><box size="0.45 0.25 0.12"/></geometry>
@@ -16,13 +16,12 @@
     </collision>
     <inertial>
       <mass value="10.0"/>
-      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.15" iyz="0" izz="0.18"/>
+      <inertia ixx="0.05" ixy="0" ixz="0"
+               iyy="0.15" iyz="0" izz="0.18"/>
     </inertial>
   </link>
 
-  <link name="left_wheel_link">
-    <visual><geometry><cylinder radius="0.0693597242" length="0.025"/></geometry></visual>
-  </link>
+  <link name="left_wheel_link"/>
   <joint name="left_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="left_wheel_link"/>
@@ -30,9 +29,7 @@
     <axis xyz="0 0 1"/>
   </joint>
 
-  <link name="right_wheel_link">
-    <visual><geometry><cylinder radius="0.0693597242" length="0.025"/></geometry></visual>
-  </link>
+  <link name="right_wheel_link"/>
   <joint name="right_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="right_wheel_link"/>
@@ -41,8 +38,11 @@
   </joint>
 
   <xacro:k9_roboclaw_ros2_control
-    name="K9RoboClawSystem"
-    dry_run="$(arg dry_run)"
-    start_inhibited="$(arg start_inhibited)"
-    device="$(arg device)"/>
+      name="K9RoboClawSystem"
+      left_joint="left_wheel_joint"
+      right_joint="right_wheel_joint"
+      dry_run="$(arg dry_run)"
+      start_inhibited="$(arg start_inhibited)"
+      device="$(arg device)"/>
+
 </robot>
