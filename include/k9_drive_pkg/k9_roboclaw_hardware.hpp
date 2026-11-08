@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <chrono>
+#include <deque>
 
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -134,6 +136,17 @@ private:
   uint32_t previous_left_raw_{0};
   uint32_t previous_right_raw_{0};
   bool previous_encoder_valid_{false};
+
+  // Rolling encoder velocity estimation (500 ms)
+  struct EncoderHistorySample
+  {
+    std::chrono::steady_clock::time_point timestamp;
+    int64_t left_counts;
+    int64_t right_counts;
+  };
+
+  std::deque<EncoderHistorySample> encoder_history_;
+  double velocity_window_seconds_{0.5};
   std::atomic<int64_t> accumulated_left_counts_{0};
   std::atomic<int64_t> accumulated_right_counts_{0};
   double left_velocity_rad_s_{0.0};

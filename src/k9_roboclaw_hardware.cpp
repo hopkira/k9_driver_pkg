@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -177,6 +178,8 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
       "encoder_counts_per_revolution", encoder_counts_per_revolution_);
     metres_per_encoder_count_ = parameter_or<double>(
       "metres_per_encoder_count", metres_per_encoder_count_);
+    velocity_window_seconds_ = parameter_or<double>(
+      "velocity_window_seconds", velocity_window_seconds_);
     wheel_separation_ = parameter_or<double>("wheel_separation", wheel_separation_);
     operational_max_qpps_ = parameter_or<int32_t>("operational_max_qpps", operational_max_qpps_);
 
@@ -250,6 +253,10 @@ void K9RoboClawHardware::validate_configuration()
   }
   if (encoder_counts_per_revolution_ <= 0.0 || metres_per_encoder_count_ <= 0.0) {
     throw std::invalid_argument("encoder scale must be positive");
+  }
+  if (!std::isfinite(velocity_window_seconds_) ||
+      velocity_window_seconds_ < 0.1 || velocity_window_seconds_ > 1.0) {
+    throw std::invalid_argument("velocity_window_seconds must be between 0.1 and 1.0");
   }
   if (wheel_separation_ <= 0.0 || operational_max_qpps_ <= 0) {
     throw std::invalid_argument("wheel separation and operational speed limit must be positive");
@@ -360,6 +367,9 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
     accumulated_left_counts_.store(0);
     accumulated_right_counts_.store(0);
     previous_encoder_valid_ = false;
+    encoder_history_.clear();
+    left_velocity_rad_s_ = 0.0;
+    right_velocity_rad_s_ = 0.0;
     have_last_command_ = false;
     last_left_qpps_ = 0;
     last_right_qpps_ = 0;
@@ -487,6 +497,9 @@ void K9RoboClawHardware::initialise_encoder_tracking()
   previous_encoder_valid_ = true;
   accumulated_left_counts_.store(0);
   accumulated_right_counts_.store(0);
+  encoder_history_.clear();
+  left_velocity_rad_s_ = 0.0;
+  right_velocity_rad_s_ = 0.0;
 }
 
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
@@ -625,10 +638,36 @@ hardware_interface::return_type K9RoboClawHardware::read(
         previous_right_raw_ = right.raw;
         accumulated_left_counts_.fetch_add(static_cast<int64_t>(left_delta));
         accumulated_right_counts_.fetch_add(static_cast<int64_t>(right_delta));
-        left_velocity_rad_s_ = counts_to_radians(
-          static_cast<int64_t>(left_delta), encoder_counts_per_revolution_) / dt;
-        right_velocity_rad_s_ = counts_to_radians(
-          static_cast<int64_t>(right_delta), encoder_counts_per_revolution_) / dt;
+      }
+
+      // Use encoder position differences across a rolling time window rather than
+      // counts from one ~30 Hz control period. This reduces quantisation of the
+      // reported wheel velocity without changing position, motor commands, or
+      // hardware safety/watchdog behaviour.
+      const auto velocity_now = std::chrono::steady_clock::now();
+      const int64_t left_counts = accumulated_left_counts_.load();
+      const int64_t right_counts = accumulated_right_counts_.load();
+      encoder_history_.push_back({velocity_now, left_counts, right_counts});
+
+      // Retain the oldest sample at least one window old, if available.
+      // At startup, use the longest interval currently available.
+      while (encoder_history_.size() > 2 &&
+        std::chrono::duration<double>(
+          velocity_now - encoder_history_[1].timestamp).count() >= velocity_window_seconds_)
+      {
+        encoder_history_.pop_front();
+      }
+
+      if (encoder_history_.size() >= 2) {
+        const auto & oldest = encoder_history_.front();
+        const double elapsed = std::chrono::duration<double>(
+          velocity_now - oldest.timestamp).count();
+        if (elapsed > 0.0) {
+          left_velocity_rad_s_ = counts_to_radians(
+            left_counts - oldest.left_counts, encoder_counts_per_revolution_) / elapsed;
+          right_velocity_rad_s_ = counts_to_radians(
+            right_counts - oldest.right_counts, encoder_counts_per_revolution_) / elapsed;
+        }
       }
 
       set_state(
