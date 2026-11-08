@@ -21,26 +21,26 @@
     </inertial>
   </link>
 
-  <link name="left_wheel_link"/>
-  <joint name="left_wheel_joint" type="continuous">
+  <link name="drivewhl_l_link"/>
+  <joint name="drivewhl_l_joint" type="continuous">
     <parent link="base_link"/>
-    <child link="left_wheel_link"/>
+    <child link="drivewhl_l_link"/>
     <origin xyz="0 0.1011 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
-  <link name="right_wheel_link"/>
-  <joint name="right_wheel_joint" type="continuous">
+  <link name="drivewhl_r_link"/>
+  <joint name="drivewhl_r_joint" type="continuous">
     <parent link="base_link"/>
-    <child link="right_wheel_link"/>
+    <child link="drivewhl_r_link"/>
     <origin xyz="0 -0.1011 0" rpy="1.57079632679 0 0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
   <xacro:k9_roboclaw_ros2_control
       name="K9RoboClawSystem"
-      left_joint="left_wheel_joint"
-      right_joint="right_wheel_joint"
+      left_joint="drivewhl_l_joint"
+      right_joint="drivewhl_r_joint"
       dry_run="$(arg dry_run)"
       start_inhibited="$(arg start_inhibited)"
       device="$(arg device)"/>
