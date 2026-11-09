@@ -48,8 +48,8 @@
         <param name="operational_max_qpps">642</param>
 
         <param name="acceleration_qpps_per_second">128</param>
-        <param name="deceleration_qpps_per_second">256</param>
-        <param name="emergency_deceleration_qpps_per_second">512</param>
+        <param name="deceleration_qpps_per_second">850</param>
+        <param name="emergency_deceleration_qpps_per_second">2048</param>
 
         <param name="max_seconds_uncommanded_travel">0.1</param>
         <param name="serial_timeout_deciseconds">2</param>
