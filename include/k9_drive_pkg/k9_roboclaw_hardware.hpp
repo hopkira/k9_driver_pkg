@@ -67,6 +67,13 @@ private:
   void set_inhibit_callback(
     const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
     std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+  void emergency_brake_callback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void clear_emergency_brake_callback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
 
   // ROS2 control interface names.
   std::string left_joint_name_{"left_wheel_joint"};
@@ -166,6 +173,9 @@ private:
   std::atomic<bool> connection_fault_{false};
   std::atomic<bool> invalid_command_fault_{false};
   std::atomic<bool> hardware_fault_{false};
+  std::atomic<bool> emergency_brake_latched_{false};
+  std::atomic<int64_t> encoder_feedback_ns_{0};
+  std::atomic<int64_t> last_encoder_motion_ns_{0};
 
   // Dry-run effective command after all hardware-layer safety processing.
   double dry_run_left_velocity_rad_s_{0.0};
@@ -198,6 +208,12 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_estop_service_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr set_inhibit_service_;
   rclcpp::TimerBase::SharedPtr diagnostics_timer_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr
+  emergency_brake_latched_pub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
+    emergency_brake_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
+    clear_emergency_brake_service_;
 };
 
 }  // namespace k9_drive_pkg

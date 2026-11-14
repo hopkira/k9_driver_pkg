@@ -1,5 +1,4 @@
 #include "k9_drive_pkg/k9_roboclaw_hardware.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <chrono>
@@ -11,14 +10,11 @@
 #include <vector>
 #include <cctype>
 #include <functional>
-
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "diagnostic_msgs/msg/key_value.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "pluginlib/class_list_macros.hpp"
-
 #include "k9_drive_pkg/drive_math.hpp"
-
 namespace k9_drive_pkg
 {
 using namespace drive_math;
@@ -53,14 +49,12 @@ constexpr uint32_t kStatusCanWarning = 0x10000000;
 constexpr uint32_t kStatusBootWarning = 0x20000000;
 constexpr uint32_t kStatusM1OverRegenWarning = 0x40000000;
 constexpr uint32_t kStatusM2OverRegenWarning = 0x80000000;
-
 constexpr uint32_t kFaultMask =
   kStatusEStop | kStatusTemperature1 | kStatusTemperature2 |
   kStatusLogicBatteryHigh | kStatusLogicBatteryLow |
   kStatusM1DriverFault | kStatusM2DriverFault |
   kStatusM1Speed | kStatusM2Speed | kStatusM1Position | kStatusM2Position |
   kStatusM1Current | kStatusM2Current;
-
 constexpr uint32_t kWarningMask =
   kStatusM1OverCurrentWarning | kStatusM2OverCurrentWarning |
   kStatusMainBatteryHighWarning | kStatusMainBatteryLowWarning |
@@ -68,7 +62,14 @@ constexpr uint32_t kWarningMask =
   kStatusS4Triggered | kStatusS5Triggered | kStatusCanWarning |
   kStatusBootWarning | kStatusM1OverRegenWarning | kStatusM2OverRegenWarning;
 constexpr double kNearZero = 1.0e-9;
+constexpr int64_t kEmergencyQuietNs = 350000000;  // 350 ms unchanged encoders
+constexpr int64_t kEmergencyFeedbackMaxAgeNs = 400000000; // 400 ms
 
+int64_t steady_now_ns()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 std::string bool_text(bool value) { return value ? "true" : "false"; }
 std::string hex32(uint32_t value)
 {
@@ -76,7 +77,6 @@ std::string hex32(uint32_t value)
   stream << "0x" << std::hex << std::setw(8) << std::setfill('0') << value;
   return stream.str();
 }
-
 diagnostic_msgs::msg::KeyValue kv(const std::string & key, const std::string & value)
 {
   diagnostic_msgs::msg::KeyValue item;
@@ -84,7 +84,6 @@ diagnostic_msgs::msg::KeyValue kv(const std::string & key, const std::string & v
   item.value = value;
   return item;
 }
-
 template<typename T>
 std::string number_text(T value, int precision = 3)
 {
@@ -92,9 +91,7 @@ std::string number_text(T value, int precision = 3)
   stream << std::fixed << std::setprecision(precision) << value;
   return stream.str();
 }
-
 }  // namespace
-
 K9RoboClawHardware::~K9RoboClawHardware()
 {
   safe_stop_noexcept("hardware interface destruction");
@@ -102,7 +99,6 @@ K9RoboClawHardware::~K9RoboClawHardware()
     roboclaw_->close_port();
   }
 }
-
 template<typename T>
 T K9RoboClawHardware::parameter_or(const std::string & name, const T & default_value) const
 {
@@ -110,7 +106,6 @@ T K9RoboClawHardware::parameter_or(const std::string & name, const T & default_v
   if (it == info_.hardware_parameters.end()) {
     return default_value;
   }
-
   if constexpr (std::is_same_v<T, std::string>) {
     return it->second;
   } else if constexpr (std::is_integral_v<T>) {
@@ -129,7 +124,6 @@ T K9RoboClawHardware::parameter_or(const std::string & name, const T & default_v
     return static_cast<T>(raw);
   }
 }
-
 bool K9RoboClawHardware::parameter_bool(const std::string & name, bool default_value) const
 {
   const auto it = info_.hardware_parameters.find(name);
@@ -148,14 +142,12 @@ bool K9RoboClawHardware::parameter_bool(const std::string & name, bool default_v
   }
   throw std::invalid_argument("Invalid boolean hardware parameter '" + name + "': " + it->second);
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)
 {
   if (hardware_interface::SystemInterface::on_init(params) != CallbackReturn::SUCCESS) {
     return CallbackReturn::ERROR;
   }
-
   try {
     left_joint_name_ = parameter_or<std::string>("left_joint", left_joint_name_);
     right_joint_name_ = parameter_or<std::string>("right_joint", right_joint_name_);
@@ -173,7 +165,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
       "configure_main_voltage_limits", configure_main_voltage_limits_);
     configure_s3_estop_ = parameter_bool("configure_s3_estop", configure_s3_estop_);
     read_temperature_2_ = parameter_bool("read_temperature_2", read_temperature_2_);
-
     encoder_counts_per_revolution_ = parameter_or<double>(
       "encoder_counts_per_revolution", encoder_counts_per_revolution_);
     metres_per_encoder_count_ = parameter_or<double>(
@@ -182,7 +173,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
       "velocity_window_seconds", velocity_window_seconds_);
     wheel_separation_ = parameter_or<double>("wheel_separation", wheel_separation_);
     operational_max_qpps_ = parameter_or<int32_t>("operational_max_qpps", operational_max_qpps_);
-
     acceleration_qpps_per_second_ = parameter_or<uint32_t>(
       "acceleration_qpps_per_second", acceleration_qpps_per_second_);
     deceleration_qpps_per_second_ = parameter_or<uint32_t>(
@@ -193,7 +183,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
       "max_seconds_uncommanded_travel", max_seconds_uncommanded_travel_);
     serial_timeout_deciseconds_ = parameter_or<uint8_t>(
       "serial_timeout_deciseconds", serial_timeout_deciseconds_);
-
     m1_p_ = parameter_or<double>("m1_p", m1_p_);
     m1_i_ = parameter_or<double>("m1_i", m1_i_);
     m1_d_ = parameter_or<double>("m1_d", m1_d_);
@@ -202,7 +191,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
     m2_i_ = parameter_or<double>("m2_i", m2_i_);
     m2_d_ = parameter_or<double>("m2_d", m2_d_);
     m2_pid_qpps_ = parameter_or<uint32_t>("m2_pid_qpps", m2_pid_qpps_);
-
     main_voltage_min_tenths_ = parameter_or<uint16_t>(
       "main_voltage_min_tenths", main_voltage_min_tenths_);
     main_voltage_max_tenths_ = parameter_or<uint16_t>(
@@ -215,26 +203,22 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
       "diagnostics_publish_hz", diagnostics_publish_hz_);
     dry_run_main_voltage_ = parameter_or<double>("dry_run_main_voltage", dry_run_main_voltage_);
     dry_run_logic_voltage_ = parameter_or<double>("dry_run_logic_voltage", dry_run_logic_voltage_);
-
     // Preserve the proven 2021 distance calibration exactly. The nominal 139 mm
     // wheel diameter is documentation; metres/count is the authoritative scale.
     const double effective_circumference =
       encoder_counts_per_revolution_ * metres_per_encoder_count_;
     effective_wheel_radius_ = effective_circumference / kTwoPi;
-
     left_position_interface_ = left_joint_name_ + "/" + hardware_interface::HW_IF_POSITION;
     right_position_interface_ = right_joint_name_ + "/" + hardware_interface::HW_IF_POSITION;
     left_velocity_state_interface_ = left_joint_name_ + "/" + hardware_interface::HW_IF_VELOCITY;
     right_velocity_state_interface_ = right_joint_name_ + "/" + hardware_interface::HW_IF_VELOCITY;
     left_velocity_command_interface_ = left_joint_name_ + "/" + hardware_interface::HW_IF_VELOCITY;
     right_velocity_command_interface_ = right_joint_name_ + "/" + hardware_interface::HW_IF_VELOCITY;
-
     validate_configuration();
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(get_logger(), "K9 RoboClaw configuration invalid: %s", ex.what());
     return CallbackReturn::ERROR;
   }
-
   RCLCPP_INFO(
     get_logger(),
     "K9 RoboClaw: %s, addr=0x%02x, dry_run=%s, wheel_radius=%.8f m, separation=%.4f m, "
@@ -242,10 +226,8 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_init(
     device_.c_str(), static_cast<unsigned>(address_), dry_run_ ? "true" : "false",
     effective_wheel_radius_, wheel_separation_,
     encoder_counts_per_revolution_ * metres_per_encoder_count_, operational_max_qpps_);
-
   return CallbackReturn::SUCCESS;
 }
-
 void K9RoboClawHardware::validate_configuration()
 {
   if (left_joint_name_ == right_joint_name_) {
@@ -280,7 +262,6 @@ void K9RoboClawHardware::validate_configuration()
     throw std::invalid_argument(
       "K9 requires RoboClaw S3 mode 0x01 (non-latching E-Stop) on firmware v4.1.34");
   }
-
   const auto validate_wheel_joint = [&](const std::string & expected_name) {
       const auto it = std::find_if(
         info_.joints.begin(), info_.joints.end(),
@@ -310,11 +291,9 @@ void K9RoboClawHardware::validate_configuration()
                 "wheel joint '" + expected_name + "' must expose position and velocity state interfaces");
       }
     };
-
   validate_wheel_joint(left_joint_name_);
   validate_wheel_joint(right_joint_name_);
 }
-
 void K9RoboClawHardware::create_ros_interfaces()
 {
   if (motor_battery_pub_) {
@@ -324,7 +303,6 @@ void K9RoboClawHardware::create_ros_interfaces()
   if (!node) {
     throw std::runtime_error("ros2_control did not provide a framework-managed hardware node");
   }
-
   motor_battery_pub_ = node->create_publisher<sensor_msgs::msg::BatteryState>(
     "/k9/battery/motor", rclcpp::SensorDataQoS());
   logic_battery_pub_ = node->create_publisher<sensor_msgs::msg::BatteryState>(
@@ -337,20 +315,28 @@ void K9RoboClawHardware::create_ros_interfaces()
     "/k9/drive/estop_latched", rclcpp::SystemDefaultsQoS());
   enabled_pub_ = node->create_publisher<std_msgs::msg::Bool>(
     "/k9/drive/enabled", rclcpp::SystemDefaultsQoS());
-
   clear_estop_service_ = node->create_service<std_srvs::srv::Trigger>(
     "/k9/drive/clear_estop_latch",
     std::bind(
       &K9RoboClawHardware::clear_estop_callback, this,
       std::placeholders::_1, std::placeholders::_2));
+  emergency_brake_service_ = node->create_service<std_srvs::srv::Trigger>(
+    "/k9/drive/emergency_brake",
+    std::bind(&K9RoboClawHardware::emergency_brake_callback, this,
+      std::placeholders::_1, std::placeholders::_2));
+  clear_emergency_brake_service_ = node->create_service<std_srvs::srv::Trigger>(
+    "/k9/drive/clear_emergency_brake",
+    std::bind(&K9RoboClawHardware::clear_emergency_brake_callback, this,
+      std::placeholders::_1, std::placeholders::_2));
+  emergency_brake_latched_pub_ = node->create_publisher<std_msgs::msg::Bool>(
+    "/k9/drive/emergency_brake_latched", rclcpp::SystemDefaultsQoS());
+
   set_inhibit_service_ = node->create_service<std_srvs::srv::SetBool>(
     "/k9/drive/set_inhibit",
     std::bind(
       &K9RoboClawHardware::set_inhibit_callback, this,
       std::placeholders::_1, std::placeholders::_2));
-
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
   const rclcpp_lifecycle::State &)
 {
@@ -358,6 +344,10 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
     create_ros_interfaces();
     active_.store(false);
     software_inhibit_.store(true);
+    emergency_brake_latched_.store(false);
+    const auto now_ns = steady_now_ns();
+    encoder_feedback_ns_.store(0);
+    last_encoder_motion_ns_.store(now_ns);
     raw_estop_.store(false);
     estop_latched_.store(false);
     motion_rearm_required_.store(true);
@@ -375,14 +365,12 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
     last_right_qpps_ = 0;
     commanded_m1_qpps_.store(0);
     commanded_m2_qpps_.store(0);
-
     set_state(left_position_interface_, 0.0);
     set_state(right_position_interface_, 0.0);
     set_state(left_velocity_state_interface_, 0.0);
     set_state(right_velocity_state_interface_, 0.0);
     set_command(left_velocity_command_interface_, 0.0);
     set_command(right_velocity_command_interface_, 0.0);
-
     if (dry_run_) {
       firmware_version_ = "K9 RoboClaw dry-run";
       main_battery_voltage_.store(dry_run_main_voltage_);
@@ -394,7 +382,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
     } else {
       configure_real_hardware();
     }
-
     // Start telemetry publishing only after all cached configuration/firmware
     // fields are initialised, so the timer never races configuration writes.
     if (!diagnostics_timer_) {
@@ -411,13 +398,11 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_configure(
   }
   return CallbackReturn::SUCCESS;
 }
-
 void K9RoboClawHardware::configure_real_hardware()
 {
   roboclaw_ = std::make_unique<RoboClawTransport>(
     device_, baud_rate_, address_, io_timeout_ms_, command_retries_, debug_serial_);
   roboclaw_->open_port();
-
   // The first transmitted drive command after opening the link is always zero.
   roboclaw_->stop(emergency_deceleration_qpps_per_second_);
   firmware_version_ = roboclaw_->firmware_version();
@@ -427,13 +412,10 @@ void K9RoboClawHardware::configure_real_hardware()
       "detected firmware: " + firmware_version_);
   }
   RCLCPP_INFO(get_logger(), "RoboClaw firmware 4.1.x detected; using K9-verified 32-bit command-90 status framing");
-
   // Hardware-level watchdog: independent of diff_drive_controller's ROS timeout.
   roboclaw_->set_serial_timeout(serial_timeout_deciseconds_);
-
   roboclaw_->set_velocity_pid(RoboClawTransport::Motor::M1, m1_p_, m1_i_, m1_d_, m1_pid_qpps_);
   roboclaw_->set_velocity_pid(RoboClawTransport::Motor::M2, m2_p_, m2_i_, m2_d_, m2_pid_qpps_);
-
   if (configure_main_voltage_limits_) {
     roboclaw_->set_main_voltages(main_voltage_min_tenths_, main_voltage_max_tenths_);
   }
@@ -455,7 +437,6 @@ void K9RoboClawHardware::configure_real_hardware()
       static_cast<unsigned>(pin_modes[0]), static_cast<unsigned>(pin_modes[1]),
       static_cast<unsigned>(pin_modes[2]));
   }
-
   if (reset_encoders_on_configure_) {
     // Match the proven 2021 controller exactly: reset both RoboClaw encoder
     // registers on genuine hardware startup/configuration. Runtime rollover is
@@ -463,7 +444,6 @@ void K9RoboClawHardware::configure_real_hardware()
     roboclaw_->reset_encoders();
   }
   initialise_encoder_tracking();
-
   roboclaw_status_.store(roboclaw_->read_status());
   const bool estop = (roboclaw_status_.load() & kStatusEStop) != 0;
   raw_estop_.store(estop);
@@ -481,13 +461,11 @@ void K9RoboClawHardware::configure_real_hardware()
   main_battery_voltage_.store(roboclaw_->read_main_battery_voltage());
   logic_battery_voltage_.store(roboclaw_->read_logic_battery_voltage());
   roboclaw_->stop(emergency_deceleration_qpps_per_second_);
-
   RCLCPP_INFO(
     get_logger(), "Connected to RoboClaw 2x15A: %s; main=%.1f V, logic=%.1f V, status=%s",
     firmware_version_.c_str(), main_battery_voltage_.load(), logic_battery_voltage_.load(),
     hex32(roboclaw_status_.load()).c_str());
 }
-
 void K9RoboClawHardware::initialise_encoder_tracking()
 {
   const auto left = roboclaw_->read_encoder(RoboClawTransport::Motor::M1);
@@ -501,7 +479,6 @@ void K9RoboClawHardware::initialise_encoder_tracking()
   left_velocity_rad_s_ = 0.0;
   right_velocity_rad_s_ = 0.0;
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
   const rclcpp_lifecycle::State &)
 {
@@ -511,7 +488,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
   motion_rearm_required_.store(true);
   software_inhibit_.store(start_inhibited_);
   active_.store(true);
-
   // Communication and non-E-stop hardware faults prevent a usable control loop,
   // so activation must fail for those conditions.  A physical E-stop is
   // different: K9 should be able to boot, publish diagnostics/encoders/battery
@@ -524,7 +500,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
     active_.store(false);
     return CallbackReturn::FAILURE;
   }
-
   if (raw_estop_.load() || estop_latched_.load()) {
     RCLCPP_WARN(
       get_logger(),
@@ -532,7 +507,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
       "Release the physical key, then clear /k9/drive/clear_estop_latch; "
       "an explicit zero wheel command is required before motion can re-arm.");
   }
-
   if (start_inhibited_) {
     RCLCPP_WARN(
       get_logger(),
@@ -541,7 +515,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_activate(
   }
   return CallbackReturn::SUCCESS;
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_deactivate(
   const rclcpp_lifecycle::State &)
 {
@@ -553,7 +526,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_deactivate(
   safe_stop_noexcept("deactivate");
   return CallbackReturn::SUCCESS;
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_cleanup(
   const rclcpp_lifecycle::State &)
 {
@@ -570,7 +542,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_cleanup(
   }
   return CallbackReturn::SUCCESS;
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_shutdown(
   const rclcpp_lifecycle::State &)
 {
@@ -586,7 +557,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_shutdown(
   }
   return CallbackReturn::SUCCESS;
 }
-
 K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_error(
   const rclcpp_lifecycle::State &)
 {
@@ -602,7 +572,6 @@ K9RoboClawHardware::CallbackReturn K9RoboClawHardware::on_error(
   }
   return CallbackReturn::SUCCESS;
 }
-
 hardware_interface::return_type K9RoboClawHardware::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
@@ -611,7 +580,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
     if (!(dt > 0.0) || !std::isfinite(dt)) {
       return hardware_interface::return_type::OK;
     }
-
     if (dry_run_) {
       const double old_left = get_state<double>(left_position_interface_);
       const double old_right = get_state<double>(right_position_interface_);
@@ -623,10 +591,15 @@ hardware_interface::return_type K9RoboClawHardware::read(
         dry_run_left_velocity_rad_s_, encoder_counts_per_revolution_));
       measured_m2_qpps_.store(radians_per_second_to_qpps(
         dry_run_right_velocity_rad_s_, encoder_counts_per_revolution_));
+      const int64_t now_ns = steady_now_ns();
+      encoder_feedback_ns_.store(now_ns);
+      if (std::abs(dry_run_left_velocity_rad_s_) > kNearZero ||
+          std::abs(dry_run_right_velocity_rad_s_) > kNearZero) {
+        last_encoder_motion_ns_.store(now_ns);
+      }
     } else {
       const auto left = roboclaw_->read_encoder(RoboClawTransport::Motor::M1);
       const auto right = roboclaw_->read_encoder(RoboClawTransport::Motor::M2);
-
       if (!previous_encoder_valid_) {
         previous_left_raw_ = left.raw;
         previous_right_raw_ = right.raw;
@@ -638,7 +611,11 @@ hardware_interface::return_type K9RoboClawHardware::read(
         previous_right_raw_ = right.raw;
         accumulated_left_counts_.fetch_add(static_cast<int64_t>(left_delta));
         accumulated_right_counts_.fetch_add(static_cast<int64_t>(right_delta));
+        if (left_delta != 0 || right_delta != 0) {
+          last_encoder_motion_ns_.store(steady_now_ns());
+        }
       }
+      encoder_feedback_ns_.store(steady_now_ns());
 
       // Use encoder position differences across a rolling time window rather than
       // counts from one ~30 Hz control period. This reduces quantisation of the
@@ -648,7 +625,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
       const int64_t left_counts = accumulated_left_counts_.load();
       const int64_t right_counts = accumulated_right_counts_.load();
       encoder_history_.push_back({velocity_now, left_counts, right_counts});
-
       // Retain the oldest sample at least one window old, if available.
       // At startup, use the longest interval currently available.
       while (encoder_history_.size() > 2 &&
@@ -657,7 +633,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
       {
         encoder_history_.pop_front();
       }
-
       if (encoder_history_.size() >= 2) {
         const auto & oldest = encoder_history_.front();
         const double elapsed = std::chrono::duration<double>(
@@ -669,7 +644,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
             right_counts - oldest.right_counts, encoder_counts_per_revolution_) / elapsed;
         }
       }
-
       set_state(
         left_position_interface_,
         counts_to_radians(accumulated_left_counts_.load(), encoder_counts_per_revolution_));
@@ -678,7 +652,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
         counts_to_radians(accumulated_right_counts_.load(), encoder_counts_per_revolution_));
       set_state(left_velocity_state_interface_, left_velocity_rad_s_);
       set_state(right_velocity_state_interface_, right_velocity_rad_s_);
-
       const auto now = std::chrono::steady_clock::now();
       const double poll_period = 1.0 / status_poll_hz_;
       if (last_status_poll_.time_since_epoch().count() == 0 ||
@@ -699,7 +672,6 @@ hardware_interface::return_type K9RoboClawHardware::read(
     return hardware_interface::return_type::ERROR;
   }
 }
-
 void K9RoboClawHardware::update_status_cache()
 {
   const uint32_t status = roboclaw_->read_status();
@@ -716,7 +688,6 @@ void K9RoboClawHardware::update_status_cache()
     software_inhibit_.store(true);
     motion_rearm_required_.store(true);
   }
-
   // Intentionally spread slower RoboClaw queries over several status ticks.
   switch (secondary_status_index_++ % 4) {
     case 0:
@@ -743,14 +714,12 @@ void K9RoboClawHardware::update_status_cache()
       break;
   }
 }
-
 hardware_interface::return_type K9RoboClawHardware::write(
   const rclcpp::Time &, const rclcpp::Duration &)
 {
   try {
     const double left_command = get_command<double>(left_velocity_command_interface_);
     const double right_command = get_command<double>(right_velocity_command_interface_);
-
     if (!std::isfinite(left_command) || !std::isfinite(right_command)) {
       invalid_command_fault_.store(true);
       software_inhibit_.store(true);
@@ -759,10 +728,11 @@ hardware_interface::return_type K9RoboClawHardware::write(
       RCLCPP_ERROR(get_logger(), "Rejected non-finite wheel velocity command");
       return hardware_interface::return_type::ERROR;
     }
-
     // After activation, clearing an inhibit, or releasing/clearing an E-stop,
     // at least one explicit zero command must be observed before motion resumes.
-    bool blocked = !active_.load() || software_inhibit_.load() || raw_estop_.load() ||
+    const bool emergency_braking = emergency_brake_latched_.load();
+    bool blocked = !active_.load() || software_inhibit_.load() || emergency_braking ||
+      raw_estop_.load() ||
       estop_latched_.load() || connection_fault_.load() || invalid_command_fault_.load() ||
       hardware_fault_.load();
     bool just_rearmed = false;
@@ -774,12 +744,10 @@ hardware_interface::return_type K9RoboClawHardware::write(
         blocked = true;
       }
     }
-
     double requested_left_qpps = blocked || just_rearmed ? 0.0 :
       static_cast<double>(radians_per_second_to_qpps(left_command, encoder_counts_per_revolution_));
     double requested_right_qpps = blocked || just_rearmed ? 0.0 :
       static_cast<double>(radians_per_second_to_qpps(right_command, encoder_counts_per_revolution_));
-
     // Preserve the original K9 turn-speed policy. The 2021 controller reduced
     // maximum wheel speed as the centreline turning radius tightened, reaching
     // 10% of walking speed for an on-the-spot turn. Infer the same radius from
@@ -796,7 +764,6 @@ hardware_interface::return_type K9RoboClawHardware::write(
       }
     }
     applied_turn_modifier_.store(turn_modifier);
-
     // Hard physical ceiling inside the hardware layer. Scale the pair together
     // so a bad upstream command cannot exceed K9's radius-dependent limit and
     // the requested curvature is preserved.
@@ -807,23 +774,25 @@ hardware_interface::return_type K9RoboClawHardware::write(
       requested_left_qpps *= scale;
       requested_right_qpps *= scale;
     }
-
     const int32_t left_qpps = static_cast<int32_t>(std::lround(requested_left_qpps));
     const int32_t right_qpps = static_cast<int32_t>(std::lround(requested_right_qpps));
-
     uint32_t selected_accel = acceleration_qpps_per_second_;
-    if (left_qpps == 0 && right_qpps == 0) {
+    if (blocked) {
       selected_accel = emergency_deceleration_qpps_per_second_;
     } else if (have_last_command_ &&
       (is_slowing(last_left_qpps_, left_qpps) || is_slowing(last_right_qpps_, right_qpps)))
     {
       selected_accel = deceleration_qpps_per_second_;
     }
+    // A normal zero command is ordinary deceleration; only an inhibited/faulted
+    // or explicitly emergency-braked drive selects the emergency rate.
+    if (!blocked && !just_rearmed && left_qpps == 0 && right_qpps == 0 &&
+        have_last_command_ && (last_left_qpps_ != 0 || last_right_qpps_ != 0)) {
+      selected_accel = deceleration_qpps_per_second_;
+    }
     selected_acceleration_.store(selected_accel);
-
     const uint32_t left_distance = bounded_travel_counts(left_qpps, max_seconds_uncommanded_travel_);
     const uint32_t right_distance = bounded_travel_counts(right_qpps, max_seconds_uncommanded_travel_);
-
     if (dry_run_) {
       dry_run_left_velocity_rad_s_ = qpps_to_radians_per_second(
         left_qpps, encoder_counts_per_revolution_);
@@ -837,7 +806,6 @@ hardware_interface::return_type K9RoboClawHardware::write(
       roboclaw_->drive_speed_accel_distance(
         selected_accel, left_qpps, left_distance, right_qpps, right_distance, true);
     }
-
     commanded_m1_qpps_.store(left_qpps);
     commanded_m2_qpps_.store(right_qpps);
     last_left_qpps_ = left_qpps;
@@ -854,7 +822,6 @@ hardware_interface::return_type K9RoboClawHardware::write(
     return hardware_interface::return_type::ERROR;
   }
 }
-
 void K9RoboClawHardware::safe_stop_noexcept(const char *) noexcept
 {
   commanded_m1_qpps_.store(0);
@@ -872,6 +839,49 @@ void K9RoboClawHardware::safe_stop_noexcept(const char *) noexcept
   } catch (...) {
     // Safety cleanup must not throw from lifecycle/destructor paths.
   }
+}
+void K9RoboClawHardware::emergency_brake_callback(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  emergency_brake_latched_.store(true);
+  software_inhibit_.store(true);  // Clearing the brake must never restart motion.
+  motion_rearm_required_.store(true);
+  response->success = true;
+  response->message = "Emergency brake latched; hardware write loop will command zero";
+}
+
+void K9RoboClawHardware::clear_emergency_brake_callback(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!emergency_brake_latched_.load()) {
+    response->success = false;
+    response->message = "No emergency brake is latched";
+    return;
+  }
+  const int64_t now_ns = steady_now_ns();
+  const int64_t feedback_ns = encoder_feedback_ns_.load();
+  const int64_t motion_ns = last_encoder_motion_ns_.load();
+  if (feedback_ns <= 0 || now_ns - feedback_ns > kEmergencyFeedbackMaxAgeNs ||
+      now_ns - motion_ns < kEmergencyQuietNs) {
+    response->success = false;
+    response->message = "Fresh encoder feedback and 350 ms stationary required";
+    return;
+  }
+  if (raw_estop_.load() || estop_latched_.load() ||
+      connection_fault_.load() || hardware_fault_.load() ||
+      invalid_command_fault_.load()) {
+    response->success = false;
+    response->message = "E-stop or drive fault still active";
+    return;
+  }
+  // Operator must establish that the original hazard is clear before calling.
+  // A zero wheel command is required again by the existing rearm gate.
+  motion_rearm_required_.store(true);
+  emergency_brake_latched_.store(false);
+  response->success = true;
+  response->message = "Emergency brake cleared; software inhibit remains asserted; explicit release and zero required";
 }
 
 void K9RoboClawHardware::clear_estop_callback(
@@ -895,14 +905,14 @@ void K9RoboClawHardware::clear_estop_callback(
   response->success = true;
   response->message = "Software E-stop latch cleared; zero wheel command required before motion can re-arm";
 }
-
 void K9RoboClawHardware::set_inhibit_callback(
   const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
   std::shared_ptr<std_srvs::srv::SetBool::Response> response)
 {
-  if (!request->data && (raw_estop_.load() || estop_latched_.load() || connection_fault_.load() || hardware_fault_.load())) {
+  if (!request->data && (emergency_brake_latched_.load() || raw_estop_.load() ||
+      estop_latched_.load() || connection_fault_.load() || hardware_fault_.load())) {
     response->success = false;
-    response->message = "Cannot release software inhibit while E-stop/fault is active";
+    response->message = "Cannot release software inhibit while emergency brake/E-stop/fault is active";
     return;
   }
   software_inhibit_.store(request->data);
@@ -915,11 +925,10 @@ void K9RoboClawHardware::set_inhibit_callback(
     "Drive software inhibit asserted" :
     "Drive software inhibit released; zero wheel command required before motion can re-arm";
 }
-
 int K9RoboClawHardware::diagnostic_level(uint32_t status) const
 {
   if (connection_fault_.load() || invalid_command_fault_.load() || hardware_fault_.load() ||
-      estop_latched_.load() || (status & kFaultMask) != 0)
+      estop_latched_.load() || emergency_brake_latched_.load() || (status & kFaultMask) != 0)
   {
     return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
@@ -928,7 +937,6 @@ int K9RoboClawHardware::diagnostic_level(uint32_t status) const
   }
   return diagnostic_msgs::msg::DiagnosticStatus::OK;
 }
-
 std::string K9RoboClawHardware::decode_status(uint32_t status) const
 {
   if (status == 0) {
@@ -963,7 +971,6 @@ std::string K9RoboClawHardware::decode_status(uint32_t status) const
   add(kStatusBootWarning, "boot-warning");
   add(kStatusM1OverRegenWarning, "M1-over-regen-warning");
   add(kStatusM2OverRegenWarning, "M2-over-regen-warning");
-
   std::ostringstream stream;
   for (std::size_t i = 0; i < labels.size(); ++i) {
     if (i) stream << ", ";
@@ -971,7 +978,6 @@ std::string K9RoboClawHardware::decode_status(uint32_t status) const
   }
   return stream.str();
 }
-
 void K9RoboClawHardware::publish_cached_status()
 {
   if (!motor_battery_pub_) {
@@ -979,7 +985,6 @@ void K9RoboClawHardware::publish_cached_status()
   }
   const auto stamp = get_clock()->now();
   const double nan = std::numeric_limits<double>::quiet_NaN();
-
   sensor_msgs::msg::BatteryState motor;
   motor.header.stamp = stamp;
   motor.header.frame_id = "base_link";
@@ -997,13 +1002,11 @@ void K9RoboClawHardware::publish_cached_status()
   motor.location = "K9 24 V motor battery / RoboClaw main supply";
   motor.serial_number = "";
   motor_battery_pub_->publish(motor);
-
   sensor_msgs::msg::BatteryState logic = motor;
   logic.voltage = static_cast<float>(logic_battery_voltage_.load());
   logic.power_supply_technology = sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LIFE;
   logic.location = "RELiON 12.8 V LiFePO4 / RoboClaw logic supply";
   logic_battery_pub_->publish(logic);
-
   diagnostic_msgs::msg::DiagnosticArray array;
   array.header.stamp = stamp;
   diagnostic_msgs::msg::DiagnosticStatus drive;
@@ -1013,15 +1016,17 @@ void K9RoboClawHardware::publish_cached_status()
   drive.hardware_id = dry_run_ ? "dry-run" : device_;
   drive.message = connection_fault_.load() ? "RoboClaw communication fault" :
     (estop_latched_.load() ? "E-stop latched" :
+      (emergency_brake_latched_.load() ? "Emergency brake latched" :
     (hardware_fault_.load() ? decode_status(status) :
     (invalid_command_fault_.load() ? "invalid wheel command latched" :
-    (software_inhibit_.load() ? "software inhibited" : decode_status(status)))));
+    (software_inhibit_.load() ? "software inhibited" : decode_status(status))))));
   drive.values.push_back(kv("firmware", firmware_version_));
   drive.values.push_back(kv("dry_run", bool_text(dry_run_)));
   drive.values.push_back(kv("active", bool_text(active_.load())));
   drive.values.push_back(kv("software_inhibit", bool_text(software_inhibit_.load())));
   drive.values.push_back(kv("raw_estop", bool_text(raw_estop_.load())));
   drive.values.push_back(kv("estop_latched", bool_text(estop_latched_.load())));
+  drive.values.push_back(kv("emergency_brake_latched", bool_text(emergency_brake_latched_.load())));
   drive.values.push_back(kv("motion_rearm_required", bool_text(motion_rearm_required_.load())));
   drive.values.push_back(kv("connection_fault", bool_text(connection_fault_.load())));
   drive.values.push_back(kv("hardware_fault", bool_text(hardware_fault_.load())));
@@ -1048,18 +1053,18 @@ void K9RoboClawHardware::publish_cached_status()
   drive.values.push_back(kv("operational_max_qpps", std::to_string(operational_max_qpps_)));
   array.status.push_back(drive);
   diagnostics_pub_->publish(array);
-
   std_msgs::msg::Bool value;
   value.data = raw_estop_.load();
   estop_pub_->publish(value);
   value.data = estop_latched_.load();
   estop_latched_pub_->publish(value);
-  value.data = active_.load() && !software_inhibit_.load() && !raw_estop_.load() &&
+  value.data = emergency_brake_latched_.load();
+  emergency_brake_latched_pub_->publish(value);
+  value.data = active_.load() && !software_inhibit_.load() &&
+    !emergency_brake_latched_.load() && !raw_estop_.load() &&
     !estop_latched_.load() && !motion_rearm_required_.load() && !connection_fault_.load() &&
     !hardware_fault_.load();
   enabled_pub_->publish(value);
 }
-
 }  // namespace k9_drive_pkg
-
 PLUGINLIB_EXPORT_CLASS(k9_drive_pkg::K9RoboClawHardware, hardware_interface::SystemInterface)
